@@ -256,6 +256,7 @@ struct rpc_svc_data {
     void (*dispatch)();
 };
 static SET(unsigned short) udp_port_data, tcp_port_data;
+static SET(char*) ip_addr_data;
 static SET(struct rpc_svc_data) rpc_svc_data;
 static SET(verto_ev *) events;
 
@@ -320,6 +321,20 @@ loop_setup_signals(verto_ctx *ctx, void *handle, void (*reset)())
     sc->handle = handle;
     sc->reset = reset;
     verto_set_private(ev, sc, free_sighup_context);
+    return 0;
+}
+
+krb5_error_code
+loop_add_ip_address(char* addr)
+{
+    int i;
+    char *val, **tmpptr;
+    FOREACH_ELT(ip_addr_data, i, val) {
+        if (addr == val)
+            return 0;
+    }
+    if (!ADD(ip_addr_data, addr, tmpptr))
+        return ENOMEM;
     return 0;
 }
 
@@ -414,6 +429,31 @@ free_connection(struct connection *conn)
     if (conn->type == CONN_RPC_LISTENER && conn->transp != NULL)
         svc_destroy(conn->transp);
     free(conn);
+}
+
+/* Get an appropriate struct sockaddr for a specified address */
+static int get_ip_addr(struct socksetup *data, struct sockaddr_storage *s_addr) {
+    char* addr;
+    int i, ret = 0;
+    char derp[40];
+    struct addrinfo hints, *output;
+    memset(&hints, 0, sizeof(struct addrinfo));
+
+    FOREACH_ELT(ip_addr_data, i, addr) {
+        if( getaddrinfo(addr, NULL, &hints, &output)) 
+            return -1;
+        
+        memcpy(s_addr, output->ai_addr, sizeof(*s_addr));
+        if(output->ai_family == AF_INET)
+            ret = 4;
+        else if(output->ai_family == AF_INET6)
+            ret = 6;
+        else 
+            ret = -1;
+
+        freeaddrinfo(output);
+    }
+    return ret;
 }
 
 static void
@@ -719,43 +759,60 @@ setup_a_tcp_listener(struct socksetup *data, struct sockaddr *addr)
 static int
 setup_tcp_listener_ports(struct socksetup *data)
 {
+    struct sockaddr_storage saddr;
     struct sockaddr_in sin4;
     struct sockaddr_in6 sin6;
-    int i, port;
+    int i, port, type;
 
-    memset(&sin4, 0, sizeof(sin4));
-    sin4.sin_family = AF_INET;
+    memset(&saddr, 0, sizeof(struct sockaddr));
+    type = get_ip_addr(data, &saddr);
+    if (type < 0) {
+        return -1;
+    }
+    else if(type == 0)
+    {
+        memset(&sin4, 0, sizeof(sin4));
+        sin4.sin_family = AF_INET;
 #ifdef HAVE_SA_LEN
-    sin4.sin_len = sizeof(sin4);
+        sin4.sin_len = sizeof(sin4);
 #endif
-    sin4.sin_addr.s_addr = INADDR_ANY;
+        sin4.sin_addr.s_addr = INADDR_ANY;
 
-    memset(&sin6, 0, sizeof(sin6));
-    sin6.sin6_family = AF_INET6;
+        memset(&sin6, 0, sizeof(sin6));
+        sin6.sin6_family = AF_INET6;
 #ifdef SIN6_LEN
-    sin6.sin6_len = sizeof(sin6);
+        sin6.sin6_len = sizeof(sin6);
 #endif
-    sin6.sin6_addr = in6addr_any;
-
+        sin6.sin6_addr = in6addr_any;
+    }
     FOREACH_ELT (tcp_port_data, i, port) {
         int s4, s6;
-
-        set_sa_port((struct sockaddr *)&sin4, htons(port));
-        if (!ipv6_enabled()) {
-            s4 = setup_a_tcp_listener(data, (struct sockaddr *)&sin4);
+        if(type == 4) {
+            set_sa_port((struct sockaddr *) &saddr, htons(port));
+            s4 = setup_a_tcp_listener(data, (struct sockaddr*)&saddr); 
             if (s4 < 0)
                 return -1;
             s6 = -1;
-        } else {
-            s4 = s6 = -1;
-
-            set_sa_port((struct sockaddr *)&sin6, htons(port));
-
-            s6 = setup_a_tcp_listener(data, (struct sockaddr *)&sin6);
-            if (s6 < 0)
+            continue;
+        } else if(type == 6) {
+            set_sa_port((struct sockaddr *) &saddr, htons(port));
+            s6 = setup_a_tcp_listener(data, (struct sockaddr*) &saddr);
+            if(s6 < 0)
                 return -1;
-
+            s4 = -1;
+            continue;
+        } else {
+            s6 = -1;
+            set_sa_port((struct sockaddr *)&sin4, htons(port));
             s4 = setup_a_tcp_listener(data, (struct sockaddr *)&sin4);
+            if (s4 < 0)
+                return -1;
+            if(ipv6_enabled()) {
+                set_sa_port((struct sockaddr *)&sin6, htons(port));
+                s6 = setup_a_tcp_listener(data, (struct sockaddr *)&sin6);
+                if (s6 < 0)
+                    return -1;
+            }
         }
 
         /* Sockets are created, prepare to listen on them. */
@@ -786,55 +843,72 @@ setup_tcp_listener_ports(struct socksetup *data)
 static int
 setup_rpc_listener_ports(struct socksetup *data)
 {
+    struct sockaddr_storage saddr;
     struct sockaddr_in sin4;
     struct sockaddr_in6 sin6;
-    int i;
+    int i, type;
     struct rpc_svc_data svc;
 
-    memset(&sin4, 0, sizeof(sin4));
-    sin4.sin_family = AF_INET;
-#ifdef HAVE_SA_LEN
-    sin4.sin_len = sizeof(sin4);
-#endif
-    sin4.sin_addr.s_addr = INADDR_ANY;
+    type = get_ip_addr(data, &saddr);
 
-    memset(&sin6, 0, sizeof(sin6));
-    sin6.sin6_family = AF_INET6;
+    if(type < 0) 
+        return -1;
+    else if(type == 0) {
+        memset(&sin4, 0, sizeof(sin4));
+        sin4.sin_family = AF_INET;
 #ifdef HAVE_SA_LEN
-    sin6.sin6_len = sizeof(sin6);
+        sin4.sin_len = sizeof(sin4);
 #endif
-    sin6.sin6_addr = in6addr_any;
+
+        memset(&sin6, 0, sizeof(sin6));
+        sin6.sin6_family = AF_INET6;
+#ifdef HAVE_SA_LEN
+        sin6.sin6_len = sizeof(sin6);
+#endif
+    }
 
     FOREACH_ELT (rpc_svc_data, i, svc) {
-        int s4;
-        int s6;
+        int s4 = -1;
+        int s6 = -1;
+        if(type == 4 || type == 0) {
+            if(type == 4) {
+                set_sa_port((struct sockaddr *) &saddr, htons(svc.port));
+                s4 = create_server_socket(data, (struct sockaddr* )&saddr, SOCK_STREAM);
+            } else if (type == 0) {
+                set_sa_port((struct sockaddr *)&sin4, htons(svc.port));
+                s4 = create_server_socket(data, (struct sockaddr *)&sin4, SOCK_STREAM);
+            }
 
-        set_sa_port((struct sockaddr *)&sin4, htons(svc.port));
-        s4 = create_server_socket(data, (struct sockaddr *)&sin4, SOCK_STREAM);
-        if (s4 < 0)
-            return -1;
-
-        if (add_rpc_listener_fd(data, &svc, s4) == NULL)
-            close(s4);
-        else
-            krb5_klog_syslog(LOG_INFO, _("listening on fd %d: rpc %s"),
-                             s4, paddr((struct sockaddr *)&sin4));
-
-        if (ipv6_enabled()) {
-            set_sa_port((struct sockaddr *)&sin6, htons(svc.port));
-            s6 = create_server_socket(data, (struct sockaddr *)&sin6,
-                                      SOCK_STREAM);
-            if (s6 < 0)
+            if (s4 < 0)
                 return -1;
 
-            if (add_rpc_listener_fd(data, &svc, s6) == NULL)
+            if (add_rpc_listener_fd(data, &svc, s4) == NULL)
+                close(s4);
+            else
+                krb5_klog_syslog(LOG_INFO, _("listening on fd %d: rpc %s"),
+                                 s4, paddr((struct sockaddr *)&sin4));
+        } 
+        if (type == 6 || type == 0){
+            if (type == 6) {
+                set_sa_port((struct sockaddr *)&saddr, htons(svc.port));
+                s6 = create_server_socket(data, (struct sockaddr* )&saddr, SOCK_STREAM);
+            }
+            else if (type == 0) {
+                set_sa_port((struct sockaddr *)&sin6, htons(svc.port));
+                s6 = create_server_socket(data, (struct sockaddr *)&sin6, SOCK_STREAM);
+            }
+
+            if(s6 < 0)
+                return -1;
+
+            if(add_rpc_listener_fd(data, &svc, s6) == NULL)
                 close(s6);
             else
                 krb5_klog_syslog(LOG_INFO, _("listening on fd %d: rpc %s"),
                                  s6, paddr((struct sockaddr *)&sin6));
         }
     }
-
+    
     return 0;
 }
 
@@ -1219,9 +1293,11 @@ krb5_error_code
 loop_setup_network(verto_ctx *ctx, void *handle, const char *prog)
 {
     struct socksetup setup_data;
+    char* tmp;
     verto_ev *ev;
-    int i;
-
+    int i, address = 1;
+    struct addrinfo hints, *servinfo;
+    memset(&hints, 0, sizeof(hints));
     /* Close any open connections. */
     FOREACH_ELT(events, i, ev)
         verto_del(ev);
@@ -1238,12 +1314,30 @@ loop_setup_network(verto_ctx *ctx, void *handle, const char *prog)
      * so we might need only one UDP socket; fall back to binding
      * sockets on each address only if IPV6_PKTINFO isn't
      * supported.
+     *
+     * If only a single address was specified, immediately use the fall
+     * back code for that single address.
      */
     setup_data.udp_flags = UDP_DO_IPV4 | UDP_DO_IPV6;
-    setup_udp_pktinfo_ports(&setup_data);
-    if (setup_data.udp_flags) {
-        if (foreach_localaddr (&setup_data, setup_udp_port, 0, 0)) {
-            return setup_data.retval;
+
+    FOREACH_ELT(ip_addr_data, i, tmp) {
+        address = 0;
+
+        if (getaddrinfo(tmp, NULL, &hints, &servinfo)) {
+            com_err(prog, errno, "Could not translate ip address.");
+            return -1;
+        }
+        
+        setup_udp_port(&setup_data, (struct sockaddr*) servinfo->ai_addr);
+        freeaddrinfo(servinfo);
+    }
+
+    if (address) {
+        setup_udp_pktinfo_ports(&setup_data);
+        if (setup_data.udp_flags) {
+            if (foreach_localaddr (&setup_data, setup_udp_port, 0, 0)) {
+                return setup_data.retval;
+            }
         }
     }
     setup_tcp_listener_ports(&setup_data);
@@ -1944,6 +2038,7 @@ loop_free(verto_ctx *ctx)
     FREE_SET_DATA(events);
     FREE_SET_DATA(udp_port_data);
     FREE_SET_DATA(tcp_port_data);
+    FREE_SET_DATA(ip_addr_data);
     FREE_SET_DATA(rpc_svc_data);
 }
 

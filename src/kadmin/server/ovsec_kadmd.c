@@ -106,8 +106,8 @@ void kadm5_set_use_password_server (void);
 
 static void usage()
 {
-    fprintf(stderr, _("Usage: kadmind [-x db_args]* [-r realm] [-m] [-nofork] "
-                      "[-port port-number]\n"
+    fprintf(stderr, _("Usage: kadmind [-x db_args]* [-r realm] [-m] [-nofork]\n"
+                      "\t\t[-port port-number] [-l listen-address]\n"
                       "\t\t[-p path-to-kdb5_util] [-F dump-file]\n"
                       "\t\t[-K path-to-kprop] [-P pid_file]\n"
                       "\nwhere,\n\t[-x db_args]* - any number of database "
@@ -221,12 +221,14 @@ int main(int argc, char *argv[])
     gss_buffer_desc gssbuf;
     gss_OID nt_krb5_name_oid;
     kadm5_config_params params;
+    char *ip_address = NULL;
     char **db_args      = NULL;
     int    db_args_size = 0;
     char *errmsg;
     int i;
     int strong_random = 1;
     const char *pid_file = NULL;
+    int net_fail = 0;
 
     kdb_log_context *log_ctx;
 
@@ -319,6 +321,11 @@ int main(int argc, char *argv[])
             if (!argc)
                 usage();
             kprop = *argv;
+        } else if (strcmp(*argv, "-l") == 0) {
+            argc--; argv++;
+            if (!argc)
+                usage();
+            ip_address = *argv;
         } else
             break;
         argc--; argv++;
@@ -399,9 +406,14 @@ int main(int argc, char *argv[])
         krb5_klog_close(context);
         exit(1);
     }
+   
+    if (ip_address != NULL) {
+        if((ret = loop_add_ip_address(ip_address))) 
+            net_fail = 1;
+    }
 
 #define server_handle ((kadm5_server_handle_t)global_server_handle)
-    if ((ret = loop_add_udp_port(server_handle->params.kpasswd_port))
+    if (net_fail || (ret = loop_add_udp_port(server_handle->params.kpasswd_port))
         || (ret = loop_add_tcp_port(server_handle->params.kpasswd_port))
         || (ret = loop_add_rpc_service(server_handle->params.kadmind_port,
                                        KADM, KADMVERS, kadm_1))

@@ -54,7 +54,7 @@ static void usage (char *);
 
 static krb5_error_code setup_sam (void);
 
-static void initialize_realms (krb5_context, int, char **);
+static void initialize_realms (krb5_context, int, char **, char **);
 
 static void finish_realms (void);
 
@@ -591,7 +591,7 @@ usage(char *name)
             _("usage: %s [-x db_args]* [-d dbpathname] [-r dbrealmname]\n"
               "\t\t[-R replaycachename] [-m] [-k masterenctype]\n"
               "\t\t[-M masterkeyname] [-p port] [-P pid_file]\n"
-              "\t\t[-n] [-w numworkers] [/]\n\n"
+              "\t\t[-n] [-w numworkers] [-l listen_address] [/]\n\n"
               "where,\n"
               "\t[-x db_args]* - Any number of database specific arguments.\n"
               "\t\t\tLook at each database module documentation for "
@@ -602,7 +602,7 @@ usage(char *name)
 
 
 static void
-initialize_realms(krb5_context kcontext, int argc, char **argv)
+initialize_realms(krb5_context kcontext, int argc, char **argv, char** addr)
 {
     int                 c;
     char                *db_name = (char *) NULL;
@@ -666,7 +666,7 @@ initialize_realms(krb5_context kcontext, int argc, char **argv)
      * Loop through the option list.  Each time we encounter a realm name,
      * use the previously scanned options to fill in for defaults.
      */
-    while ((c = getopt(argc, argv, "x:r:d:mM:k:R:e:P:p:s:nw:4:T:X3")) != -1) {
+    while ((c = getopt(argc, argv, "x:r:d:mM:k:R:e:P:p:s:nw:4:l:T:X3")) != -1) {
         switch(c) {
         case 'x':
             db_args_size++;
@@ -786,6 +786,9 @@ initialize_realms(krb5_context kcontext, int argc, char **argv)
             break;
         case 'X':
             break;
+        case 'l':
+            *addr = optarg;
+            break;
         case '?':
         default:
             usage(argv[0]);
@@ -899,6 +902,7 @@ int main(int argc, char **argv)
     verto_ctx *ctx;
     int errout = 0;
     int i;
+    char* addr = NULL;
 
     setlocale(LC_ALL, "");
     if (strrchr(argv[0], '/'))
@@ -937,7 +941,7 @@ int main(int argc, char **argv)
     /*
      * Scan through the argument list
      */
-    initialize_realms(kcontext, argc, argv);
+    initialize_realms(kcontext, argc, argv, &addr);
 
 #ifndef NOCACHE
     retval = kdc_init_lookaside(kcontext);
@@ -965,6 +969,9 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    if (addr != NULL)
+        loop_add_ip_address(addr);
+    
     /* Handle each realm's ports */
     for (i=0; i< shandle.kdc_numrealms; i++) {
         char *cp = shandle.kdc_realmlist[i]->realm_ports;
@@ -1044,7 +1051,7 @@ int main(int argc, char **argv)
             return 1;
         }
         /* We get here only in a worker child process; re-initialize realms. */
-        initialize_realms(kcontext, argc, argv);
+        initialize_realms(kcontext, argc, argv, &addr);
     }
     krb5_klog_syslog(LOG_INFO, _("commencing operation"));
     if (nofork)

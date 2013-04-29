@@ -43,6 +43,7 @@ void init_addr(krb5_fulladdr *, struct sockaddr *);
 verto_ctx *loop_init(verto_ev_type types);
 krb5_error_code loop_add_udp_port(int port);
 krb5_error_code loop_add_tcp_port(int port);
+krb5_error_code loop_add_ip_address(char* addr);
 krb5_error_code loop_add_rpc_service(int port, u_long prognum, u_long versnum,
                                      void (*dispatch)());
 krb5_error_code loop_setup_routing_socket(verto_ctx *ctx, void *handle,
