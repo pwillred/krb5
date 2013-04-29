@@ -18,6 +18,7 @@ SYNOPSIS
 [**-w** *numworkers*]
 [**-P** *pid_file*]
 [**-T** *time_offset*]
+[**-l** *listen_address*]
 
 
 DESCRIPTION
@@ -110,6 +111,10 @@ Options supported for the LDAP database module are:
 
 The **-T** *offset* option specifies a time offset, in seconds, which
 the KDC will operate under.  It is intended only for testing purposes.
+
+The **-l** *listen_address* option specifies which IP address the KDC
+will use to listen for and respond to requsts.  By default, the KDC 
+will attempt to service requests on all addresses for the machine.  
 
 EXAMPLE
 -------

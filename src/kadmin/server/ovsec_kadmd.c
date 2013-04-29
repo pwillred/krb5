@@ -106,8 +106,8 @@ void kadm5_set_use_password_server (void);
 
 static void usage()
 {
-    fprintf(stderr, _("Usage: kadmind [-x db_args]* [-r realm] [-m] [-nofork]\n"
-                      "\t\t[-port port-number] [-l listen-address]\n"
+    fprintf(stderr, _("Usage: kadmind [-x db_args]* [-r realm] [-m] [-nofork]"
+                      "\n\t\t[-port port-number] [-l listen-address]\n"
                       "\t\t[-p path-to-kdb5_util] [-F dump-file]\n"
                       "\t\t[-K path-to-kprop] [-P pid_file]\n"
                       "\nwhere,\n\t[-x db_args]* - any number of database "
@@ -406,16 +406,18 @@ int main(int argc, char *argv[])
         krb5_klog_close(context);
         exit(1);
     }
-   
+
     if (ip_address != NULL) {
-        if((ret = loop_add_ip_address(ip_address))) 
+        ret = loop_add_ip_address(ip_address);
+        if (ret)
             net_fail = 1;
     }
 
 #define server_handle ((kadm5_server_handle_t)global_server_handle)
-    if (net_fail || (ret = loop_add_udp_port(server_handle->params.kpasswd_port))
-        || (ret = loop_add_tcp_port(server_handle->params.kpasswd_port))
-        || (ret = loop_add_rpc_service(server_handle->params.kadmind_port,
+    if (net_fail ||
+            (ret = loop_add_udp_port(server_handle->params.kpasswd_port)) ||
+            (ret = loop_add_tcp_port(server_handle->params.kpasswd_port)) ||
+            (ret = loop_add_rpc_service(server_handle->params.kadmind_port,
                                        KADM, KADMVERS, kadm_1))
 #ifndef DISABLE_IPROP
         || (server_handle->params.iprop_enabled

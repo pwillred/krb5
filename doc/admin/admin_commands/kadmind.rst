@@ -16,6 +16,7 @@ SYNOPSIS
 [**-p** *kdb5_util_path*]
 [**-K** *kprop_path*]
 [**-F** *dump_file*]
+[**-l** *listen_address*]
 
 DESCRIPTION
 -----------
@@ -129,6 +130,11 @@ OPTIONS
             messages are printed to standard error, so this option
             must be used with the **-nofork** option to be useful.
             New in release 1.12.
+
+**-l** *listen_address*
+        specifies which IP address the KDC will use to listen for and
+        respond to requsts.  By default, the KDC will attempt to 
+        service requests on all addresses for the machine.  
 
 SEE ALSO
 --------

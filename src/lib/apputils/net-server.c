@@ -432,7 +432,8 @@ free_connection(struct connection *conn)
 }
 
 /* Get an appropriate struct sockaddr for a specified address */
-static int get_ip_addr(struct socksetup *data, struct sockaddr_storage *s_addr) {
+static int get_ip_addr(struct socksetup *data,
+        struct sockaddr_storage *s_addr) {
     char* addr;
     int i, ret = 0;
     char derp[40];
@@ -440,15 +441,15 @@ static int get_ip_addr(struct socksetup *data, struct sockaddr_storage *s_addr) 
     memset(&hints, 0, sizeof(struct addrinfo));
 
     FOREACH_ELT(ip_addr_data, i, addr) {
-        if( getaddrinfo(addr, NULL, &hints, &output)) 
+        if( getaddrinfo(addr, NULL, &hints, &output))
             return -1;
-        
+
         memcpy(s_addr, output->ai_addr, sizeof(*s_addr));
         if(output->ai_family == AF_INET)
             ret = 4;
         else if(output->ai_family == AF_INET6)
             ret = 6;
-        else 
+        else
             ret = -1;
 
         freeaddrinfo(output);
@@ -768,9 +769,7 @@ setup_tcp_listener_ports(struct socksetup *data)
     type = get_ip_addr(data, &saddr);
     if (type < 0) {
         return -1;
-    }
-    else if(type == 0)
-    {
+    } else if (type == 0) {
         memset(&sin4, 0, sizeof(sin4));
         sin4.sin_family = AF_INET;
 #ifdef HAVE_SA_LEN
@@ -787,14 +786,14 @@ setup_tcp_listener_ports(struct socksetup *data)
     }
     FOREACH_ELT (tcp_port_data, i, port) {
         int s4, s6;
-        if(type == 4) {
+        if (type == 4) {
             set_sa_port((struct sockaddr *) &saddr, htons(port));
             s4 = setup_a_tcp_listener(data, (struct sockaddr*)&saddr); 
             if (s4 < 0)
                 return -1;
             s6 = -1;
             continue;
-        } else if(type == 6) {
+        } else if (type == 6) {
             set_sa_port((struct sockaddr *) &saddr, htons(port));
             s6 = setup_a_tcp_listener(data, (struct sockaddr*) &saddr);
             if(s6 < 0)
@@ -807,7 +806,7 @@ setup_tcp_listener_ports(struct socksetup *data)
             s4 = setup_a_tcp_listener(data, (struct sockaddr *)&sin4);
             if (s4 < 0)
                 return -1;
-            if(ipv6_enabled()) {
+            if (ipv6_enabled()) {
                 set_sa_port((struct sockaddr *)&sin6, htons(port));
                 s6 = setup_a_tcp_listener(data, (struct sockaddr *)&sin6);
                 if (s6 < 0)
@@ -817,8 +816,9 @@ setup_tcp_listener_ports(struct socksetup *data)
 
         /* Sockets are created, prepare to listen on them. */
         if (s4 >= 0) {
-            if (add_tcp_listener_fd(data, s4) == NULL)
+            if (add_tcp_listener_fd(data, s4) == NULL) {
                 close(s4);
+            }
             else {
                 krb5_klog_syslog(LOG_INFO, _("listening on fd %d: tcp %s"),
                                  s4, paddr((struct sockaddr *)&sin4));
@@ -851,9 +851,9 @@ setup_rpc_listener_ports(struct socksetup *data)
 
     type = get_ip_addr(data, &saddr);
 
-    if(type < 0) 
+    if (type < 0) {
         return -1;
-    else if(type == 0) {
+    } else if (type == 0) {
         memset(&sin4, 0, sizeof(sin4));
         sin4.sin_family = AF_INET;
 #ifdef HAVE_SA_LEN

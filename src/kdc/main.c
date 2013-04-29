@@ -666,7 +666,8 @@ initialize_realms(krb5_context kcontext, int argc, char **argv, char** addr)
      * Loop through the option list.  Each time we encounter a realm name,
      * use the previously scanned options to fill in for defaults.
      */
-    while ((c = getopt(argc, argv, "x:r:d:mM:k:R:e:P:p:s:nw:4:l:T:X3")) != -1) {
+    while ((c = getopt(argc, argv,
+                    "x:r:d:mM:k:R:e:P:p:s:nw:4:l:T:X3")) != -1) {
         switch(c) {
         case 'x':
             db_args_size++;
@@ -902,7 +903,7 @@ int main(int argc, char **argv)
     verto_ctx *ctx;
     int errout = 0;
     int i;
-    char* addr = NULL;
+    char *addr = NULL;
 
     setlocale(LC_ALL, "");
     if (strrchr(argv[0], '/'))
@@ -971,7 +972,7 @@ int main(int argc, char **argv)
 
     if (addr != NULL)
         loop_add_ip_address(addr);
-    
+
     /* Handle each realm's ports */
     for (i=0; i< shandle.kdc_numrealms; i++) {
         char *cp = shandle.kdc_realmlist[i]->realm_ports;
